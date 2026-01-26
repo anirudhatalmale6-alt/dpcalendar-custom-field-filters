@@ -10,6 +10,7 @@ namespace FloorballTurniere\Plugin\System\DPCalendarFilterFields\Extension;
 
 \defined('_JEXEC') or die;
 
+use Joomla\CMS\Factory;
 use Joomla\CMS\Form\Form;
 use Joomla\CMS\Plugin\CMSPlugin;
 use Joomla\Component\Fields\Administrator\Helper\FieldsHelper;
@@ -25,7 +26,37 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
     {
         return [
             'onContentPrepareForm' => 'onContentPrepareForm',
+            'onAfterRoute'         => 'onAfterRoute',
         ];
+    }
+
+    /**
+     * Capture filter[com_fields] from request and store in user state
+     * This ensures the model can retrieve the filter values
+     */
+    public function onAfterRoute(Event $event): void
+    {
+        $app = $this->getApplication();
+
+        // Only process on site frontend
+        if (!$app->isClient('site')) {
+            return;
+        }
+
+        // Check if this is a DPCalendar request
+        $option = $app->getInput()->get('option', '');
+        if ($option !== 'com_dpcalendar') {
+            return;
+        }
+
+        // Get filter data from request
+        $filter = $app->getInput()->get('filter', [], 'array');
+
+        if (!empty($filter['com_fields'])) {
+            // Store in session for the model to retrieve
+            $context = 'com_dpcalendar.events';
+            $app->setUserState($context . '.filter.com_fields', $filter['com_fields']);
+        }
     }
 
     /**
@@ -40,16 +71,9 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
         $formName = $form->getName();
 
         // Match DPCalendar events filter forms
-        // The form name could be:
-        // - com_dpcalendar.events (direct model form)
-        // - com_dpcalendar.filter.events (filter form variant)
-        // - calendar.XXX.filter (calendar view with Itemid)
-        // - list.XXX.filter (list view with Itemid)
-        // - map.XXX.filter (map view with Itemid)
         $isDPCalendarEventsForm = false;
 
         if (str_starts_with($formName, 'com_dpcalendar')) {
-            // Check for events form patterns
             if (str_contains($formName, 'events') || str_contains($formName, 'filter')) {
                 $isDPCalendarEventsForm = true;
             }
@@ -100,8 +124,7 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
                 continue;
             }
 
-            // Build XML for a multi-select dropdown field
-            // Using filter[com_fields][fieldname] format that DPCalendar expects
+            // Build options XML
             $optionsXml = '';
             $optionsXml .= '<option value="">- ' . htmlspecialchars($field->label, ENT_XML1, 'UTF-8') . ' -</option>';
 
@@ -113,12 +136,12 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
                 }
             }
 
-            // Clean up label for XML
             $label = htmlspecialchars($field->label, ENT_XML1, 'UTF-8');
             $fieldName = htmlspecialchars($field->name, ENT_XML1, 'UTF-8');
 
-            // Use Joomla's fancyselect/chosen class for better UX
-            // The 'advancedSelect' layout enables click-to-select behavior
+            // The DPCalendar EventsModel expects filter.com_fields to be an associative array
+            // keyed by field name. Using the correct nested structure:
+            // filter[com_fields][fieldname][] for multiple values
             $fieldXml = <<<XML
 <?xml version="1.0" encoding="utf-8"?>
 <form>
@@ -131,6 +154,7 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
                 multiple="true"
                 layout="joomla.form.field.list-fancy-select"
                 class="dp-select advancedSelect"
+                hint="{$label}"
             >
                 {$optionsXml}
             </field>
@@ -139,11 +163,10 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
 </form>
 XML;
 
-            // Load the field into the form
             try {
                 $form->load($fieldXml);
             } catch (\Exception $e) {
-                // Silently fail if form loading fails
+                // Silently fail
             }
         }
     }
