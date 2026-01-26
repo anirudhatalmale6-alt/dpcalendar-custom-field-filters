@@ -12,7 +12,6 @@ namespace FloorballTurniere\Plugin\System\DPCalendarFilterFields\Extension;
 
 use Joomla\CMS\Factory;
 use Joomla\CMS\Form\Form;
-use Joomla\CMS\Log\Log;
 use Joomla\CMS\Plugin\CMSPlugin;
 use Joomla\Component\Fields\Administrator\Helper\FieldsHelper;
 use Joomla\Event\Event;
@@ -26,9 +25,42 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
     public static function getSubscribedEvents(): array
     {
         return [
-            'onContentPrepareForm' => ['onContentPrepareForm', -100],
-            'onAfterInitialise'    => ['onAfterInitialise', 100],
+            'onContentPrepareForm'  => ['onContentPrepareForm', -100],
+            'onAfterInitialise'     => ['onAfterInitialise', 100],
+            'onBeforeCompileHead'   => ['onBeforeCompileHead', 100],
         ];
+    }
+
+    /**
+     * Add custom CSS to replace "Remove" text with X
+     */
+    public function onBeforeCompileHead(Event $event): void
+    {
+        $app = $this->getApplication();
+
+        if (!$app->isClient('site')) {
+            return;
+        }
+
+        $doc = $app->getDocument();
+        if ($doc->getType() !== 'html') {
+            return;
+        }
+
+        // CSS to hide "Remove" text and show X instead
+        $css = '
+            .choices__button {
+                font-size: 0 !important;
+                padding: 0 8px !important;
+            }
+            .choices__button::after {
+                content: "×" !important;
+                font-size: 16px !important;
+                font-weight: bold !important;
+            }
+        ';
+
+        $doc->addStyleDeclaration($css);
     }
 
     /**
@@ -42,29 +74,17 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
             return;
         }
 
-        // Add debug logging
-        Log::addLogger(['text_file' => 'dpcalendar_filter_debug.log'], Log::ALL, ['dpcalendar_filter']);
-
-        // Get filter data from request - try multiple methods
+        // Get filter data from request
         $filterFromInput = $app->getInput()->get('filter', [], 'array');
         $filterFromPost = $app->getInput()->post->get('filter', [], 'array');
         $filterFromGet = $app->getInput()->get->get('filter', [], 'array');
-
-        Log::add('=== Filter Debug ===', Log::DEBUG, 'dpcalendar_filter');
-        Log::add('Request method: ' . $app->getInput()->getMethod(), Log::DEBUG, 'dpcalendar_filter');
-        Log::add('Filter from input: ' . json_encode($filterFromInput), Log::DEBUG, 'dpcalendar_filter');
-        Log::add('Filter from POST: ' . json_encode($filterFromPost), Log::DEBUG, 'dpcalendar_filter');
-        Log::add('Filter from GET: ' . json_encode($filterFromGet), Log::DEBUG, 'dpcalendar_filter');
 
         // Use whichever has data
         $filter = !empty($filterFromPost) ? $filterFromPost : (!empty($filterFromGet) ? $filterFromGet : $filterFromInput);
 
         if (empty($filter['com_fields'])) {
-            Log::add('No com_fields in filter data', Log::DEBUG, 'dpcalendar_filter');
             return;
         }
-
-        Log::add('com_fields found: ' . json_encode($filter['com_fields']), Log::DEBUG, 'dpcalendar_filter');
 
         // Clean up empty values
         $comFields = [];
@@ -80,17 +100,12 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
         }
 
         if (empty($comFields)) {
-            Log::add('com_fields empty after cleanup', Log::DEBUG, 'dpcalendar_filter');
             return;
         }
-
-        Log::add('Cleaned com_fields: ' . json_encode($comFields), Log::DEBUG, 'dpcalendar_filter');
 
         // Get Itemid and view for context
         $itemId = $app->getInput()->getInt('Itemid', 0);
         $view = $app->getInput()->get('view', 'calendar');
-
-        Log::add("Itemid: $itemId, View: $view", Log::DEBUG, 'dpcalendar_filter');
 
         // Build context variations
         $contexts = [
@@ -107,10 +122,7 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
             }
             $existingFilter['com_fields'] = $comFields;
             $app->setUserState($context . '.filter', $existingFilter);
-            Log::add("Stored filter in context: $context", Log::DEBUG, 'dpcalendar_filter');
         }
-
-        Log::add('=== End Filter Debug ===', Log::DEBUG, 'dpcalendar_filter');
     }
 
     /**
@@ -176,7 +188,8 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
                 continue;
             }
 
-            $optionsXml = '<option value="">- ' . htmlspecialchars($field->label, ENT_XML1, 'UTF-8') . ' -</option>';
+            // Start with empty options - placeholder is handled by hint attribute
+            $optionsXml = '';
 
             foreach ($options as $option) {
                 $value = $option['value'] ?? '';
@@ -202,6 +215,7 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
                 layout="joomla.form.field.list-fancy-select"
                 class="dp-select advancedSelect"
                 hint="{$label}"
+                default=""
             >
                 {$optionsXml}
             </field>
