@@ -65,7 +65,7 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
         }
 
         // Get configured field names from plugin params
-        $fieldNamesParam = $this->params->get('field_names', 'age-group,game-format');
+        $fieldNamesParam = $this->params->get('field_names', 'altersklasse,spielform');
         $configuredFieldNames = array_map('trim', explode(',', $fieldNamesParam));
 
         // Get all custom fields for DPCalendar events
@@ -117,6 +117,8 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
             $label = htmlspecialchars($field->label, ENT_XML1, 'UTF-8');
             $fieldName = htmlspecialchars($field->name, ENT_XML1, 'UTF-8');
 
+            // Use Joomla's fancyselect/chosen class for better UX
+            // The 'advancedSelect' layout enables click-to-select behavior
             $fieldXml = <<<XML
 <?xml version="1.0" encoding="utf-8"?>
 <form>
@@ -127,7 +129,8 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
                 type="list"
                 label="{$label}"
                 multiple="true"
-                class="dp-select"
+                layout="joomla.form.field.list-fancy-select"
+                class="dp-select advancedSelect"
             >
                 {$optionsXml}
             </field>

@@ -5,8 +5,8 @@
     <creationDate>2026-01</creationDate>
     <copyright>Copyright (C) 2026</copyright>
     <license>GNU General Public License version 3 or later</license>
-    <version>1.0.0</version>
-    <description>Adds custom field dropdown filters (Age Group, Game Format) to DPCalendar front-end search with multi-select support.</description>
+    <version>1.1.0</version>
+    <description>Adds custom field dropdown filters (Altersklasse, Spielform) to DPCalendar front-end search with multi-select support.</description>
     <namespace path="src">FloorballTurniere\Plugin\System\DPCalendarFilterFields</namespace>
     <files>
         <folder plugin="dpcalendarfilterfields">services</folder>
@@ -19,8 +19,8 @@
                     name="field_names"
                     type="text"
                     label="Custom Field Names"
-                    description="Comma-separated list of custom field names to display as dropdown filters (e.g., age-group,game-format)"
-                    default="age-group,game-format"
+                    description="Comma-separated list of custom field names to display as dropdown filters"
+                    default="altersklasse,spielform"
                 />
             </fieldset>
         </fields>
