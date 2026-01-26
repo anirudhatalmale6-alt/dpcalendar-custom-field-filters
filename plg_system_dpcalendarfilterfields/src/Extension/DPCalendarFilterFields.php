@@ -25,7 +25,7 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
     public static function getSubscribedEvents(): array
     {
         return [
-            'onContentPrepareForm' => 'onContentPrepareForm',
+            'onContentPrepareForm' => ['onContentPrepareForm', -100], // Run after DPCalendar
             'onAfterRoute'         => 'onAfterRoute',
         ];
     }
@@ -53,9 +53,21 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
         $filter = $app->getInput()->get('filter', [], 'array');
 
         if (!empty($filter['com_fields'])) {
-            // Store in session for the model to retrieve
-            $context = 'com_dpcalendar.events';
+            // Get the Itemid to build the correct context
+            $itemId = $app->getInput()->getInt('Itemid', 0);
+            $view = $app->getInput()->get('view', 'calendar');
+
+            // DPCalendar uses view-specific contexts like "calendar.123" or "list.456"
+            $context = $view . '.' . $itemId;
+
+            // Store in multiple possible contexts to ensure it's found
             $app->setUserState($context . '.filter.com_fields', $filter['com_fields']);
+            $app->setUserState('com_dpcalendar.events.filter.com_fields', $filter['com_fields']);
+
+            // Also try the generic filter state
+            $currentFilter = $app->getUserState($context . '.filter', []);
+            $currentFilter['com_fields'] = $filter['com_fields'];
+            $app->setUserState($context . '.filter', $currentFilter);
         }
     }
 
@@ -101,6 +113,13 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
 
         if (empty($customFields)) {
             return;
+        }
+
+        // First, remove any existing text fields for our configured fields
+        // (DPCalendar adds them as text inputs by default)
+        foreach ($configuredFieldNames as $fieldName) {
+            $form->removeField($fieldName, 'com_fields');
+            $form->removeField($fieldName, 'filter.com_fields');
         }
 
         // Find the fields we want to add as filters
