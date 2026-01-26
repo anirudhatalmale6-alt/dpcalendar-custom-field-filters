@@ -26,15 +26,15 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
     {
         return [
             'onContentPrepareForm' => ['onContentPrepareForm', -100], // Run after DPCalendar
-            'onAfterRoute'         => ['onAfterRoute', 100], // Run early
+            'onAfterInitialise'    => ['onAfterInitialise', 100],     // Run very early
         ];
     }
 
     /**
-     * Capture filter[com_fields] from request (GET or POST) and store in user state
-     * This ensures the model can retrieve the filter values
+     * Capture filter[com_fields] from request very early in the request lifecycle
+     * Before the component/model even loads
      */
-    public function onAfterRoute(Event $event): void
+    public function onAfterInitialise(Event $event): void
     {
         $app = $this->getApplication();
 
@@ -43,48 +43,54 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
             return;
         }
 
-        // Check if this is a DPCalendar request
-        $option = $app->getInput()->get('option', '');
-        if ($option !== 'com_dpcalendar') {
-            return;
-        }
-
-        // Get filter data from request (works for both GET and POST)
+        // Get filter data directly from POST/GET
+        // At this point, routing hasn't happened yet, so we check raw input
         $filter = $app->getInput()->get('filter', [], 'array');
 
-        // Get the Itemid and view to build the correct context
+        // We need Itemid for context - may not be set yet, get from request
         $itemId = $app->getInput()->getInt('Itemid', 0);
-        $view = $app->getInput()->get('view', 'calendar');
 
-        // DPCalendar uses view-specific contexts like "calendar.123" or "list.456"
-        $context = $view . '.' . $itemId;
+        // Try to determine the view from multiple sources
+        $view = $app->getInput()->get('view', '');
+        if (empty($view)) {
+            // Fallback to common DPCalendar views
+            $view = 'calendar';
+        }
+
+        // Build all possible context variations
+        $contexts = [
+            $view . '.' . $itemId,
+            'com_dpcalendar.' . $view . '.' . $itemId,
+            'com_dpcalendar.events',
+            'list.' . $itemId,
+            'calendar.' . $itemId,
+            'map.' . $itemId,
+        ];
 
         if (!empty($filter['com_fields'])) {
             // Clean up empty values
-            $comFields = array_filter($filter['com_fields'], function($value) {
+            $comFields = [];
+            foreach ($filter['com_fields'] as $fieldName => $value) {
                 if (is_array($value)) {
-                    return !empty(array_filter($value));
+                    $filtered = array_filter($value, fn($v) => $v !== '' && $v !== null);
+                    if (!empty($filtered)) {
+                        $comFields[$fieldName] = array_values($filtered);
+                    }
+                } elseif ($value !== '' && $value !== null) {
+                    $comFields[$fieldName] = [$value];
                 }
-                return !empty($value);
-            });
+            }
 
             if (!empty($comFields)) {
-                // Store in the view-specific context that DPCalendar's model uses
-                $app->setUserState($context . '.filter.com_fields', $comFields);
-
-                // Also store in generic context as fallback
-                $app->setUserState('com_dpcalendar.events.filter.com_fields', $comFields);
-            }
-        } else {
-            // Check if we need to clear the filter (form submitted with empty values)
-            $requestMethod = $app->getInput()->getMethod();
-            if ($requestMethod === 'POST') {
-                // If POST and no com_fields, might be clearing filters
-                // Check if filter array exists but com_fields is empty/missing
-                if (isset($filter) && !isset($filter['com_fields'])) {
-                    $app->setUserState($context . '.filter.com_fields', null);
-                    $app->setUserState('com_dpcalendar.events.filter.com_fields', null);
+                // Store in all possible contexts so the model can find it
+                foreach ($contexts as $context) {
+                    $app->setUserState($context . '.filter.com_fields', $comFields);
                 }
+            }
+        } elseif ($app->getInput()->getMethod() === 'POST' && !empty($filter)) {
+            // Clear filters if form submitted without com_fields
+            foreach ($contexts as $context) {
+                $app->setUserState($context . '.filter.com_fields', null);
             }
         }
     }
@@ -134,7 +140,6 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
         }
 
         // First, remove any existing text fields for our configured fields
-        // (DPCalendar adds them as text inputs by default)
         foreach ($configuredFieldNames as $fieldName) {
             $form->removeField($fieldName, 'com_fields');
             $form->removeField($fieldName, 'filter.com_fields');
@@ -142,18 +147,15 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
 
         // Find the fields we want to add as filters
         foreach ($customFields as $field) {
-            // Check if this field is in our configured list
             if (!in_array($field->name, $configuredFieldNames, true)) {
                 continue;
             }
 
-            // Only process list-type fields (list, checkboxes, radio)
             $listTypes = ['list', 'checkboxes', 'radio'];
             if (!in_array($field->type, $listTypes, true)) {
                 continue;
             }
 
-            // Get field options from fieldparams
             $fieldParams = json_decode($field->fieldparams, true);
             $options = $fieldParams['options'] ?? [];
 
@@ -161,7 +163,6 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
                 continue;
             }
 
-            // Build options XML
             $optionsXml = '';
             $optionsXml .= '<option value="">- ' . htmlspecialchars($field->label, ENT_XML1, 'UTF-8') . ' -</option>';
 
@@ -176,9 +177,6 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
             $label = htmlspecialchars($field->label, ENT_XML1, 'UTF-8');
             $fieldName = htmlspecialchars($field->name, ENT_XML1, 'UTF-8');
 
-            // The DPCalendar EventsModel expects filter.com_fields to be an associative array
-            // keyed by field name. Using the correct nested structure:
-            // filter[com_fields][fieldname][] for multiple values
             $fieldXml = <<<XML
 <?xml version="1.0" encoding="utf-8"?>
 <form>
