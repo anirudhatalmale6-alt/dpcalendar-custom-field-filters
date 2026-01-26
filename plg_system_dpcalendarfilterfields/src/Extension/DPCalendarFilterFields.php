@@ -26,12 +26,12 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
     {
         return [
             'onContentPrepareForm' => ['onContentPrepareForm', -100], // Run after DPCalendar
-            'onAfterRoute'         => 'onAfterRoute',
+            'onAfterRoute'         => ['onAfterRoute', 100], // Run early
         ];
     }
 
     /**
-     * Capture filter[com_fields] from request and store in user state
+     * Capture filter[com_fields] from request (GET or POST) and store in user state
      * This ensures the model can retrieve the filter values
      */
     public function onAfterRoute(Event $event): void
@@ -49,25 +49,43 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
             return;
         }
 
-        // Get filter data from request
+        // Get filter data from request (works for both GET and POST)
         $filter = $app->getInput()->get('filter', [], 'array');
 
+        // Get the Itemid and view to build the correct context
+        $itemId = $app->getInput()->getInt('Itemid', 0);
+        $view = $app->getInput()->get('view', 'calendar');
+
+        // DPCalendar uses view-specific contexts like "calendar.123" or "list.456"
+        $context = $view . '.' . $itemId;
+
         if (!empty($filter['com_fields'])) {
-            // Get the Itemid to build the correct context
-            $itemId = $app->getInput()->getInt('Itemid', 0);
-            $view = $app->getInput()->get('view', 'calendar');
+            // Clean up empty values
+            $comFields = array_filter($filter['com_fields'], function($value) {
+                if (is_array($value)) {
+                    return !empty(array_filter($value));
+                }
+                return !empty($value);
+            });
 
-            // DPCalendar uses view-specific contexts like "calendar.123" or "list.456"
-            $context = $view . '.' . $itemId;
+            if (!empty($comFields)) {
+                // Store in the view-specific context that DPCalendar's model uses
+                $app->setUserState($context . '.filter.com_fields', $comFields);
 
-            // Store in multiple possible contexts to ensure it's found
-            $app->setUserState($context . '.filter.com_fields', $filter['com_fields']);
-            $app->setUserState('com_dpcalendar.events.filter.com_fields', $filter['com_fields']);
-
-            // Also try the generic filter state
-            $currentFilter = $app->getUserState($context . '.filter', []);
-            $currentFilter['com_fields'] = $filter['com_fields'];
-            $app->setUserState($context . '.filter', $currentFilter);
+                // Also store in generic context as fallback
+                $app->setUserState('com_dpcalendar.events.filter.com_fields', $comFields);
+            }
+        } else {
+            // Check if we need to clear the filter (form submitted with empty values)
+            $requestMethod = $app->getInput()->getMethod();
+            if ($requestMethod === 'POST') {
+                // If POST and no com_fields, might be clearing filters
+                // Check if filter array exists but com_fields is empty/missing
+                if (isset($filter) && !isset($filter['com_fields'])) {
+                    $app->setUserState($context . '.filter.com_fields', null);
+                    $app->setUserState('com_dpcalendar.events.filter.com_fields', null);
+                }
+            }
         }
     }
 
