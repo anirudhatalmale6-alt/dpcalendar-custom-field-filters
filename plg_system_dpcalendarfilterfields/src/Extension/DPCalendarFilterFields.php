@@ -12,6 +12,7 @@ namespace FloorballTurniere\Plugin\System\DPCalendarFilterFields\Extension;
 
 use Joomla\CMS\Factory;
 use Joomla\CMS\Form\Form;
+use Joomla\CMS\Log\Log;
 use Joomla\CMS\Plugin\CMSPlugin;
 use Joomla\Component\Fields\Administrator\Helper\FieldsHelper;
 use Joomla\Event\Event;
@@ -32,7 +33,6 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
 
     /**
      * Capture filter[com_fields] from request very early
-     * Store it in the user state format that ListModel::populateState() expects
      */
     public function onAfterInitialise(Event $event): void
     {
@@ -42,12 +42,29 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
             return;
         }
 
-        // Get filter data from request
-        $filter = $app->getInput()->get('filter', [], 'array');
+        // Add debug logging
+        Log::addLogger(['text_file' => 'dpcalendar_filter_debug.log'], Log::ALL, ['dpcalendar_filter']);
+
+        // Get filter data from request - try multiple methods
+        $filterFromInput = $app->getInput()->get('filter', [], 'array');
+        $filterFromPost = $app->getInput()->post->get('filter', [], 'array');
+        $filterFromGet = $app->getInput()->get->get('filter', [], 'array');
+
+        Log::add('=== Filter Debug ===', Log::DEBUG, 'dpcalendar_filter');
+        Log::add('Request method: ' . $app->getInput()->getMethod(), Log::DEBUG, 'dpcalendar_filter');
+        Log::add('Filter from input: ' . json_encode($filterFromInput), Log::DEBUG, 'dpcalendar_filter');
+        Log::add('Filter from POST: ' . json_encode($filterFromPost), Log::DEBUG, 'dpcalendar_filter');
+        Log::add('Filter from GET: ' . json_encode($filterFromGet), Log::DEBUG, 'dpcalendar_filter');
+
+        // Use whichever has data
+        $filter = !empty($filterFromPost) ? $filterFromPost : (!empty($filterFromGet) ? $filterFromGet : $filterFromInput);
 
         if (empty($filter['com_fields'])) {
+            Log::add('No com_fields in filter data', Log::DEBUG, 'dpcalendar_filter');
             return;
         }
+
+        Log::add('com_fields found: ' . json_encode($filter['com_fields']), Log::DEBUG, 'dpcalendar_filter');
 
         // Clean up empty values
         $comFields = [];
@@ -63,15 +80,19 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
         }
 
         if (empty($comFields)) {
+            Log::add('com_fields empty after cleanup', Log::DEBUG, 'dpcalendar_filter');
             return;
         }
+
+        Log::add('Cleaned com_fields: ' . json_encode($comFields), Log::DEBUG, 'dpcalendar_filter');
 
         // Get Itemid and view for context
         $itemId = $app->getInput()->getInt('Itemid', 0);
         $view = $app->getInput()->get('view', 'calendar');
 
-        // Build all possible context variations that DPCalendar might use
-        // The model context is typically: viewname.itemid (e.g., "calendar.123")
+        Log::add("Itemid: $itemId, View: $view", Log::DEBUG, 'dpcalendar_filter');
+
+        // Build context variations
         $contexts = [
             $view . '.' . $itemId,
             'list.' . $itemId,
@@ -80,19 +101,16 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
         ];
 
         foreach ($contexts as $context) {
-            // Get existing filter state or create new array
             $existingFilter = $app->getUserState($context . '.filter', []);
             if (!is_array($existingFilter)) {
                 $existingFilter = [];
             }
-
-            // Merge in our com_fields
             $existingFilter['com_fields'] = $comFields;
-
-            // Store the complete filter array
-            // This is what ListModel::populateState() reads with getUserStateFromRequest
             $app->setUserState($context . '.filter', $existingFilter);
+            Log::add("Stored filter in context: $context", Log::DEBUG, 'dpcalendar_filter');
         }
+
+        Log::add('=== End Filter Debug ===', Log::DEBUG, 'dpcalendar_filter');
     }
 
     /**
