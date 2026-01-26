@@ -25,73 +25,73 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
     public static function getSubscribedEvents(): array
     {
         return [
-            'onContentPrepareForm' => ['onContentPrepareForm', -100], // Run after DPCalendar
-            'onAfterInitialise'    => ['onAfterInitialise', 100],     // Run very early
+            'onContentPrepareForm' => ['onContentPrepareForm', -100],
+            'onAfterInitialise'    => ['onAfterInitialise', 100],
         ];
     }
 
     /**
-     * Capture filter[com_fields] from request very early in the request lifecycle
-     * Before the component/model even loads
+     * Capture filter[com_fields] from request very early
+     * Store it in the user state format that ListModel::populateState() expects
      */
     public function onAfterInitialise(Event $event): void
     {
         $app = $this->getApplication();
 
-        // Only process on site frontend
         if (!$app->isClient('site')) {
             return;
         }
 
-        // Get filter data directly from POST/GET
-        // At this point, routing hasn't happened yet, so we check raw input
+        // Get filter data from request
         $filter = $app->getInput()->get('filter', [], 'array');
 
-        // We need Itemid for context - may not be set yet, get from request
-        $itemId = $app->getInput()->getInt('Itemid', 0);
-
-        // Try to determine the view from multiple sources
-        $view = $app->getInput()->get('view', '');
-        if (empty($view)) {
-            // Fallback to common DPCalendar views
-            $view = 'calendar';
+        if (empty($filter['com_fields'])) {
+            return;
         }
 
-        // Build all possible context variations
+        // Clean up empty values
+        $comFields = [];
+        foreach ($filter['com_fields'] as $fieldName => $value) {
+            if (is_array($value)) {
+                $filtered = array_filter($value, fn($v) => $v !== '' && $v !== null);
+                if (!empty($filtered)) {
+                    $comFields[$fieldName] = array_values($filtered);
+                }
+            } elseif ($value !== '' && $value !== null) {
+                $comFields[$fieldName] = [$value];
+            }
+        }
+
+        if (empty($comFields)) {
+            return;
+        }
+
+        // Get Itemid and view for context
+        $itemId = $app->getInput()->getInt('Itemid', 0);
+        $view = $app->getInput()->get('view', 'calendar');
+
+        // Build all possible context variations that DPCalendar might use
+        // The model context is typically: viewname.itemid (e.g., "calendar.123")
         $contexts = [
             $view . '.' . $itemId,
-            'com_dpcalendar.' . $view . '.' . $itemId,
-            'com_dpcalendar.events',
             'list.' . $itemId,
             'calendar.' . $itemId,
             'map.' . $itemId,
         ];
 
-        if (!empty($filter['com_fields'])) {
-            // Clean up empty values
-            $comFields = [];
-            foreach ($filter['com_fields'] as $fieldName => $value) {
-                if (is_array($value)) {
-                    $filtered = array_filter($value, fn($v) => $v !== '' && $v !== null);
-                    if (!empty($filtered)) {
-                        $comFields[$fieldName] = array_values($filtered);
-                    }
-                } elseif ($value !== '' && $value !== null) {
-                    $comFields[$fieldName] = [$value];
-                }
+        foreach ($contexts as $context) {
+            // Get existing filter state or create new array
+            $existingFilter = $app->getUserState($context . '.filter', []);
+            if (!is_array($existingFilter)) {
+                $existingFilter = [];
             }
 
-            if (!empty($comFields)) {
-                // Store in all possible contexts so the model can find it
-                foreach ($contexts as $context) {
-                    $app->setUserState($context . '.filter.com_fields', $comFields);
-                }
-            }
-        } elseif ($app->getInput()->getMethod() === 'POST' && !empty($filter)) {
-            // Clear filters if form submitted without com_fields
-            foreach ($contexts as $context) {
-                $app->setUserState($context . '.filter.com_fields', null);
-            }
+            // Merge in our com_fields
+            $existingFilter['com_fields'] = $comFields;
+
+            // Store the complete filter array
+            // This is what ListModel::populateState() reads with getUserStateFromRequest
+            $app->setUserState($context . '.filter', $existingFilter);
         }
     }
 
@@ -102,8 +102,6 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
     {
         /** @var Form $form */
         $form = $event->getArgument(0);
-
-        // Get form name
         $formName = $form->getName();
 
         // Match DPCalendar events filter forms
@@ -115,7 +113,6 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
             }
         }
 
-        // Also check for view-specific forms (calendar, list, map views)
         if (preg_match('/^(calendar|list|map)\.\d+/', $formName)) {
             $isDPCalendarEventsForm = true;
         }
@@ -124,11 +121,9 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
             return;
         }
 
-        // Get configured field names from plugin params
         $fieldNamesParam = $this->params->get('field_names', 'altersklasse,spielform');
         $configuredFieldNames = array_map('trim', explode(',', $fieldNamesParam));
 
-        // Get all custom fields for DPCalendar events
         try {
             $customFields = FieldsHelper::getFields('com_dpcalendar.event');
         } catch (\Exception $e) {
@@ -139,13 +134,13 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
             return;
         }
 
-        // First, remove any existing text fields for our configured fields
+        // Remove existing text fields
         foreach ($configuredFieldNames as $fieldName) {
             $form->removeField($fieldName, 'com_fields');
             $form->removeField($fieldName, 'filter.com_fields');
         }
 
-        // Find the fields we want to add as filters
+        // Add our dropdown fields
         foreach ($customFields as $field) {
             if (!in_array($field->name, $configuredFieldNames, true)) {
                 continue;
@@ -163,8 +158,7 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
                 continue;
             }
 
-            $optionsXml = '';
-            $optionsXml .= '<option value="">- ' . htmlspecialchars($field->label, ENT_XML1, 'UTF-8') . ' -</option>';
+            $optionsXml = '<option value="">- ' . htmlspecialchars($field->label, ENT_XML1, 'UTF-8') . ' -</option>';
 
             foreach ($options as $option) {
                 $value = $option['value'] ?? '';
