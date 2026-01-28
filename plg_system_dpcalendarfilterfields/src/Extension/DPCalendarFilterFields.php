@@ -58,17 +58,31 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
                 font-size: 16px !important;
                 font-weight: bold !important;
             }
-            /* Fix dropdown z-index to appear above other content */
+            /* Fix dropdown z-index and overflow to appear above other content */
+            .dp-filter,
+            .dp-filter__fields,
+            .dp-filter .control-group,
+            .dp-filter .controls,
+            .dp-form,
+            .dp-form__fields,
+            .dp-form .control-group,
+            .dp-form .controls,
+            form[name="adminForm"] .control-group,
+            form[name="adminForm"] .controls {
+                overflow: visible !important;
+            }
             .choices {
                 position: relative;
                 z-index: 100;
             }
             .choices.is-open {
-                z-index: 1000;
+                z-index: 9999 !important;
             }
             .choices__list--dropdown,
-            .choices__list[aria-expanded] {
-                z-index: 1001 !important;
+            .choices__list[aria-expanded="true"] {
+                z-index: 99999 !important;
+                position: absolute !important;
+                overflow: visible !important;
             }
         ';
 

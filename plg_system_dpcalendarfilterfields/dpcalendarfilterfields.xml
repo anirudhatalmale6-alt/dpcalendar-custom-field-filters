@@ -5,7 +5,7 @@
     <creationDate>2026-01</creationDate>
     <copyright>Copyright (C) 2026</copyright>
     <license>GNU General Public License version 3 or later</license>
-    <version>1.10.0</version>
+    <version>1.11.0</version>
     <description>Adds custom field dropdown filters (Altersklasse, Spielform) to DPCalendar front-end search with multi-select support.</description>
     <namespace path="src">FloorballTurniere\Plugin\System\DPCalendarFilterFields</namespace>
     <files>
