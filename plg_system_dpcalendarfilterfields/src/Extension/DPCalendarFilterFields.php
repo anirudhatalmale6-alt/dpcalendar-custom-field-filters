@@ -47,7 +47,7 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
             return;
         }
 
-        // CSS to hide "Remove" text and show X instead
+        // CSS to hide "Remove" text and show X instead, and fix z-index for dropdown
         $css = '
             .choices__button {
                 font-size: 0 !important;
@@ -57,6 +57,18 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
                 content: "×" !important;
                 font-size: 16px !important;
                 font-weight: bold !important;
+            }
+            /* Fix dropdown z-index to appear above other content */
+            .choices {
+                position: relative;
+                z-index: 100;
+            }
+            .choices.is-open {
+                z-index: 1000;
+            }
+            .choices__list--dropdown,
+            .choices__list[aria-expanded] {
+                z-index: 1001 !important;
             }
         ';
 
