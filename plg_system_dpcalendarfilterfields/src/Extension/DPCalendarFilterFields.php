@@ -58,31 +58,37 @@ class DPCalendarFilterFields extends CMSPlugin implements SubscriberInterface
                 font-size: 16px !important;
                 font-weight: bold !important;
             }
-            /* Fix dropdown z-index and overflow to appear above other content */
-            .dp-filter,
-            .dp-filter__fields,
-            .dp-filter .control-group,
-            .dp-filter .controls,
-            .dp-form,
-            .dp-form__fields,
-            .dp-form .control-group,
-            .dp-form .controls,
-            form[name="adminForm"] .control-group,
-            form[name="adminForm"] .controls {
-                overflow: visible !important;
+            /* Lower z-index on event list and calendar content */
+            .dp-list,
+            .dp-list__events,
+            .dp-calendar,
+            .dp-calendar__event,
+            .com-dpcalendar-list,
+            .com-dpcalendar-calendar,
+            [class*="dp-event"],
+            [class*="dp-list"] {
+                position: relative;
+                z-index: 1 !important;
             }
+            /* Ensure filter form and its dropdowns are above content */
+            .dp-form,
+            .dp-filter,
+            form[name="adminForm"],
+            .com-dpcalendar-list__filter,
+            .com-dpcalendar-calendar__filter {
+                position: relative;
+                z-index: 1000 !important;
+            }
+            /* Choices dropdown specific fixes */
             .choices {
                 position: relative;
-                z-index: 100;
+                z-index: 1001 !important;
             }
             .choices.is-open {
-                z-index: 9999 !important;
+                z-index: 10000 !important;
             }
-            .choices__list--dropdown,
-            .choices__list[aria-expanded="true"] {
-                z-index: 99999 !important;
-                position: absolute !important;
-                overflow: visible !important;
+            .choices__list--dropdown {
+                z-index: 10001 !important;
             }
         ';
 
